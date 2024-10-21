@@ -1,5 +1,5 @@
 const express = require('express');
-const axios = require('axios'); // Add axios for making HTTP requests
+const axios = require('axios'); // Ensure axios is imported for making HTTP requests
 const router = express.Router();
 require('dotenv').config();
 
@@ -14,12 +14,12 @@ router.post('/', async (req, res) => {
     // Start typing indication
     await setTypingOn(senderId);
 
-    // Send query to the Python API
-    const pythonApiResponse = await axios.post('http://localhost:5001/chatbot', {
+    // Send query to the Flask API hosted on Render
+    const pythonApiResponse = await axios.post('https://pedabot.onrender.com/chatbot', {
       question: query
     });
 
-    // Extract the response text from the Python API
+    // Extract the response text from the Flask API
     let result = pythonApiResponse.data.response;
 
     // Send the response back to the user via the Messenger API
