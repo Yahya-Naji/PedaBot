@@ -37,16 +37,14 @@ router.post('/', async (req, res) => {
     let body = req.body;
     let senderId = body.entry[0].messaging[0].sender.id;
     let query = body.entry[0].messaging[0].message.text;
-    const host = req.hostname;
-    let requestUrl = `https://${host}/sendMessage`;
-    callSendMessage(requestUrl, senderId, query)
+    const requestUrl = `${process.env.FLASK_API_URL || 'https://pedabot.onrender.com'}/sendMessage`;
+    await callSendMessage(requestUrl, senderId, query);
     console.log(senderId, query);
   } catch (error) {
     console.log(error);
   }
   res.status(200).send('OK');
 });
-
 module.exports = {
   router
 };

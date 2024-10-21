@@ -15,23 +15,30 @@ router.post('/', async (req, res) => {
     await setTypingOn(senderId);
 
     // Send query to the Flask API hosted on Render
-    const pythonApiResponse = await axios.post('https://pedabot.onrender.com/chatbot', {
+    const flaskApiUrl = process.env.FLASK_API_URL || 'https://pedabot.onrender.com/chatbot';  // Use environment variable for Flask API URL
+    const pythonApiResponse = await axios.post(flaskApiUrl, {
       question: query
     });
 
     // Extract the response text from the Flask API
-    let result = pythonApiResponse.data.response;
+    if (pythonApiResponse.status === 200 && pythonApiResponse.data.response) {
+      let result = pythonApiResponse.data.response;
 
-    // Send the response back to the user via the Messenger API
-    await sendMessage(senderId, result);
+      // Send the response back to the user via the Messenger API
+      await sendMessage(senderId, result);
 
-    // Stop typing indication
-    await setTypingOff(senderId);
+      // Stop typing indication
+      await setTypingOff(senderId);
 
-    console.log(`Sender ID: ${senderId}`);
-    console.log(`Response: ${result}`);
+      console.log(`Sender ID: ${senderId}`);
+      console.log(`Response: ${result}`);
+    } else {
+      throw new Error('No valid response from the Flask API.');
+    }
   } catch (error) {
-    console.error('Error in sendmessageroute:', error);
+    console.error('Error in sendmessageroute:', error.message);
+    await sendMessage(senderId, 'Sorry, something went wrong while processing your request.');
+    await setTypingOff(senderId);
   }
   
   res.status(200).send('OK');
