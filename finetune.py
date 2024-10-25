@@ -10,7 +10,7 @@ from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 load_dotenv()
 # Constants
-DATA_PATH = "/Users/yahyanaji/Desktop/WORK/Pedagogy /PedaBot/PEDAGOGY Portfolio for Chatbot(Powered by MaxAI).pdf"
+DATA_PATH = "/Users/yahyanaji/Desktop/WORK/Pedagogy /PedaBot/static/PEDAGOGY Portfolio for Chatbot(Powered by MaxAI).pdf"
 API_KEY = os.getenv("OPENAI_API_KEY")
 
 def load_documents():
