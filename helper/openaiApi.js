@@ -9,7 +9,8 @@ const openai = new OpenAI({
 });
 
 // PDF file path
-const DATA_PATH = "/Users/yahyanaji/Desktop/WORK/Pedagogy /PedaBot/static/PEDAGOGY Portfolio for Chatbot(Powered by MaxAI).pdf";
+const DATA_PATH ="./static/Pedagogy_Portfolio.pdf";
+
 
 // Load and parse the PDF, generate embeddings
 let embeddingsCache = null;

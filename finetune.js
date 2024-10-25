@@ -9,7 +9,7 @@ import { ChatPromptTemplate } from "@langchain/prompts";
 
 // Load environment variables
 const API_KEY = process.env.OPENAI_API_KEY;
-const DATA_PATH = "/path/to/your/pdf/document.pdf";
+const DATA_PATH = "./static/Pedagogy_Portfolio.pdf";
 
 // Step 1: Load the PDF Document
 const loadDocuments = async () => {
