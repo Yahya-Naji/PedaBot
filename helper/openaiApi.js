@@ -1,15 +1,14 @@
 const fs = require("fs");
 const pdfParse = require("pdf-parse");
-const { Configuration, OpenAIApi } = require("openai");
+const { OpenAI } = require("openai");
 require("dotenv").config();
 
-// OpenAI configuration
-const configuration = new Configuration({
+// Initialize OpenAI directly with API key
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-const openai = new OpenAIApi(configuration);
 
-// PDF file path (set this to your PDF file's path)
+// PDF file path
 const DATA_PATH = "/Users/yahyanaji/Desktop/WORK/Pedagogy /PedaBot/static/PEDAGOGY Portfolio for Chatbot(Powered by MaxAI).pdf";
 
 // Load and parse the PDF, generate embeddings
@@ -41,13 +40,13 @@ const splitText = (text, chunkSize = 300, overlap = 30) => {
 const generateEmbeddings = async (chunks) => {
   const embeddings = [];
   for (const chunk of chunks) {
-    const embeddingResponse = await openai.createEmbedding({
+    const embeddingResponse = await openai.embeddings.create({
       model: "text-embedding-ada-002",
       input: chunk,
     });
     embeddings.push({
       content: chunk,
-      embedding: embeddingResponse.data.data[0].embedding,
+      embedding: embeddingResponse.data[0].embedding,
     });
   }
   return embeddings;
@@ -84,30 +83,28 @@ const chatCompletion = async (prompt) => {
     const { textChunks, embeddings } = await initializeEmbeddings();
 
     // Generate question embedding
-    const questionEmbeddingResponse = await openai.createEmbedding({
+    const questionEmbeddingResponse = await openai.embeddings.create({
       model: "text-embedding-ada-002",
       input: prompt,
     });
-    const questionEmbedding = questionEmbeddingResponse.data.data[0].embedding;
+    const questionEmbedding = questionEmbeddingResponse.data[0].embedding;
 
     // Find the most relevant context chunk
     const relevantChunk = findRelevantChunk(embeddings, questionEmbedding) || "No relevant context found.";
 
     // Generate the response
-    const messages = [
-      {
-        role: "system",
-        content: `You are a friendly and professional customer service assistant for Pedagogy, the portal of Educational Development. Pedagogy is a consulting firm based in Lebanon that offers a wide range of educational services to academic institutions locally and in the MENA region. Respond to users in a way that sounds natural, conversational, and personalized—like a real person would. Keep the tone warm, helpful, and professional, avoiding generic responses. Focus on understanding the user's needs and providing clear, concise, and empathetic answers that reflect the company's mission to foster quality education within learning communities.`,
-      },
-      { role: "user", content: `${relevantChunk}\n\nQuestion: ${prompt}` },
-    ];
-
-    const response = await openai.createChatCompletion({
+    const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
-      messages,
+      messages: [
+        {
+          role: "system",
+          content: `You are a friendly and professional customer service assistant for Pedagogy, the portal of Educational Development. Pedagogy is a consulting firm based in Lebanon that offers a wide range of educational services to academic institutions locally and in the MENA region. Respond to users in a way that sounds natural, conversational, and personalized—like a real person would. Keep the tone warm, helpful, and professional, avoiding generic responses. Focus on understanding the user's needs and providing clear, concise, and empathetic answers that reflect the company's mission to foster quality education within learning communities.`,
+        },
+        { role: "user", content: `${relevantChunk}\n\nQuestion: ${prompt}` },
+      ],
     });
 
-    const content = response.data.choices[0].message.content;
+    const content = response.choices[0].message.content;
 
     return {
       status: 1,
