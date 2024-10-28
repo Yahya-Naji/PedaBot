@@ -9,48 +9,28 @@ const openai = new OpenAI({
 });
 
 // PDF file path
-const DATA_PATH ="./static/Pedagogy_Portfolio.pdf";
+const DATA_PATH = "./static/Pedagogy_Portfolio.pdf";
 
-
-// Load and parse the PDF, generate embeddings
+// Load and parse the PDF, generate embedding only once
 let embeddingsCache = null;
 
-// Load PDF and generate embeddings only once
-const initializeEmbeddings = async () => {
+// Load PDF and generate embedding only once
+const initializeEmbedding = async () => {
   if (embeddingsCache) return embeddingsCache;
 
+  // Read and parse the PDF
   const dataBuffer = fs.readFileSync(DATA_PATH);
   const pdfData = await pdfParse(dataBuffer);
-  const textChunks = splitText(pdfData.text);
+  const documentText = pdfData.text;
 
-  const embeddings = await generateEmbeddings(textChunks);
-  embeddingsCache = { textChunks, embeddings };
+  // Generate a single embedding for the entire document
+  const embeddingResponse = await openai.embeddings.create({
+    model: "text-embedding-ada-002",
+    input: documentText,
+  });
+  
+  embeddingsCache = { documentContent: documentText, embedding: embeddingResponse.data[0].embedding };
   return embeddingsCache;
-};
-
-// Split text into chunks
-const splitText = (text, chunkSize = 300, overlap = 30) => {
-  const chunks = [];
-  for (let i = 0; i < text.length; i += chunkSize - overlap) {
-    chunks.push(text.slice(i, i + chunkSize));
-  }
-  return chunks;
-};
-
-// Generate embeddings for each chunk
-const generateEmbeddings = async (chunks) => {
-  const embeddings = [];
-  for (const chunk of chunks) {
-    const embeddingResponse = await openai.embeddings.create({
-      model: "text-embedding-ada-002",
-      input: chunk,
-    });
-    embeddings.push({
-      content: chunk,
-      embedding: embeddingResponse.data[0].embedding,
-    });
-  }
-  return embeddings;
 };
 
 // Calculate cosine similarity
@@ -61,27 +41,11 @@ const cosineSimilarity = (vecA, vecB) => {
   return dotProduct / (magnitudeA * magnitudeB);
 };
 
-// Find the most relevant chunk for a question
-const findRelevantChunk = (embeddings, questionEmbedding) => {
-  let bestMatch = null;
-  let highestScore = -Infinity;
-
-  embeddings.forEach(({ content, embedding }) => {
-    const score = cosineSimilarity(embedding, questionEmbedding);
-    if (score > highestScore) {
-      highestScore = score;
-      bestMatch = content;
-    }
-  });
-
-  return bestMatch;
-};
-
 // Generate response based on PDF context
 const chatCompletion = async (prompt) => {
   try {
-    // Ensure embeddings are loaded and ready
-    const { textChunks, embeddings } = await initializeEmbeddings();
+    // Ensure embedding is loaded and ready
+    const { documentContent, embedding } = await initializeEmbedding();
 
     // Generate question embedding
     const questionEmbeddingResponse = await openai.embeddings.create({
@@ -90,8 +54,9 @@ const chatCompletion = async (prompt) => {
     });
     const questionEmbedding = questionEmbeddingResponse.data[0].embedding;
 
-    // Find the most relevant context chunk
-    const relevantChunk = findRelevantChunk(embeddings, questionEmbedding) || "No relevant context found.";
+    // Calculate similarity score to determine relevance
+    const similarityScore = cosineSimilarity(embedding, questionEmbedding);
+    const relevantContext = similarityScore > 0.8 ? documentContent : "No highly relevant context found.";
 
     // Generate the response
     const response = await openai.chat.completions.create({
@@ -101,7 +66,7 @@ const chatCompletion = async (prompt) => {
           role: "system",
           content: `You are a friendly and professional customer service assistant for Pedagogy, the portal of Educational Development. Respond to users in a warm, concise, and helpful tone. Avoid repeating greetings like "Thank you for reaching out" or "Hello" if the user has already initiated a conversation. Focus on directly addressing the user's question or request with clear, conversational responses. Only reintroduce yourself and Pedagogy's mission if the user is new or has specific questions about the company.`,
         },
-        { role: "user", content: `${relevantChunk}\n\nQuestion: ${prompt}` },
+        { role: "user", content: `${relevantContext}\n\nQuestion: ${prompt}` },
       ],
     });
 

@@ -64,7 +64,7 @@ const questionAnswerSystem = async (userQuestion, vectorStore) => {
   const retriever = vectorStore.asRetriever();
   const chain = await getConversationalChain(retriever);
 
-  // Run the chain with user input
+  
   const response = await chain.invoke({ input: userQuestion });
   return response.text || "No relevant answer found in the context.";
 };
