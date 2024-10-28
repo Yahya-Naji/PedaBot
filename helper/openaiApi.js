@@ -13,6 +13,7 @@ const DATA_PATH = "./static/Pedagogy_Portfolio.pdf";
 
 // Load and parse the PDF, generate embedding only once
 let embeddingsCache = null;
+let sessionMemory = {}; // Session memory to retain information like the user's name
 
 // Load PDF and generate embedding only once
 const initializeEmbedding = async () => {
@@ -28,7 +29,7 @@ const initializeEmbedding = async () => {
     model: "text-embedding-ada-002",
     input: documentText,
   });
-  
+
   embeddingsCache = { documentContent: documentText, embedding: embeddingResponse.data[0].embedding };
   return embeddingsCache;
 };
@@ -41,10 +42,16 @@ const cosineSimilarity = (vecA, vecB) => {
   return dotProduct / (magnitudeA * magnitudeB);
 };
 
-// Generate response based on PDF context
+// Generate response based on PDF context and session memory
 const chatCompletion = async (prompt) => {
   try {
-    // Ensure embedding is loaded and ready
+    // Check if the prompt includes the user's name and update memory if so
+    const nameMatch = prompt.match(/my name is (\w+)/i);
+    if (nameMatch) {
+      sessionMemory.name = nameMatch[1];
+    }
+
+    // Ensure embeddings are loaded and ready
     const { documentContent, embedding } = await initializeEmbedding();
 
     // Generate question embedding
@@ -58,15 +65,25 @@ const chatCompletion = async (prompt) => {
     const similarityScore = cosineSimilarity(embedding, questionEmbedding);
     const relevantContext = similarityScore > 0.8 ? documentContent : "No highly relevant context found.";
 
+    // Customize response based on session memory if relevant
+    let modifiedPrompt = relevantContext;
+    if (prompt.toLowerCase().includes("what is my name")) {
+      if (sessionMemory.name) {
+        modifiedPrompt += ` The user's name is ${sessionMemory.name}.`;
+      } else {
+        modifiedPrompt += " The user has not shared their name.";
+      }
+    }
+
     // Generate the response
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
         {
           role: "system",
-          content: `You are a friendly and professional customer service assistant for Pedagogy, the portal of Educational Development. Respond to users in a warm, concise, and helpful tone. Avoid repeating greetings like "Thank you for reaching out" or "Hello" if the user has already initiated a conversation. Focus on directly addressing the user's question or request with clear, conversational responses. Only reintroduce yourself and Pedagogy's mission if the user is new or has specific questions about the company.`,
+          content: `You are a friendly and professional customer service assistant for Pedagogy, the portal of Educational Development. Respond to users in a warm, concise, and helpful tone. Avoid repeating greetings like "Thank you for reaching out" or "Hello" if the user has already initiated a conversation. Focus on directly addressing the user's question or request with clear, conversational responses.`,
         },
-        { role: "user", content: `${relevantContext}\n\nQuestion: ${prompt}` },
+        { role: "user", content: `${modifiedPrompt}\n\nQuestion: ${prompt}` },
       ],
     });
 
@@ -84,6 +101,12 @@ const chatCompletion = async (prompt) => {
   }
 };
 
+// Clear session memory (optional, for testing purposes or resetting the conversation)
+const clearSessionMemory = () => {
+  sessionMemory = {};
+};
+
 module.exports = {
   chatCompletion,
+  clearSessionMemory, // Export for resetting memory if needed
 };
