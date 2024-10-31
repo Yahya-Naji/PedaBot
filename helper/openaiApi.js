@@ -5,6 +5,7 @@ require("dotenv").config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const DATA_PATH = "./static/Pedagogy_Portfolio.pdf";
+
 let embeddingsCache = null;
 let chatHistory = [];
 
@@ -21,7 +22,40 @@ const initializeEmbeddings = async () => {
   return embeddingsCache;
 };
 
-// Enhanced search function using cosine similarity
+// Split text into manageable chunks
+const splitText = (text, chunkSize = 300, overlap = 30) => {
+  const chunks = [];
+  for (let i = 0; i < text.length; i += chunkSize - overlap) {
+    chunks.push(text.slice(i, i + chunkSize));
+  }
+  return chunks;
+};
+
+// Generate embeddings for text chunks
+const generateEmbeddings = async (chunks) => {
+  const embeddings = [];
+  for (const chunk of chunks) {
+    const embeddingResponse = await openai.embeddings.create({
+      model: "text-embedding-ada-002",
+      input: chunk,
+    });
+    embeddings.push({
+      content: chunk,
+      embedding: embeddingResponse.data[0].embedding,
+    });
+  }
+  return embeddings;
+};
+
+// Cosine similarity calculation
+const cosineSimilarity = (vecA, vecB) => {
+  const dotProduct = vecA.reduce((acc, val, i) => acc + val * vecB[i], 0);
+  const magnitudeA = Math.sqrt(vecA.reduce((acc, val) => acc + val ** 2, 0));
+  const magnitudeB = Math.sqrt(vecB.reduce((acc, val) => acc + val ** 2, 0));
+  return dotProduct / (magnitudeA * magnitudeB);
+};
+
+// Find relevant document chunk based on cosine similarity
 const findRelevantChunk = async (query) => {
   const { textChunks, embeddings } = await initializeEmbeddings();
   const questionEmbeddingResponse = await openai.embeddings.create({
@@ -60,7 +94,7 @@ const chatCompletion = async (prompt) => {
           - Email: info@pedagogycenter.com
           - Hours: Mon-Fri: 8 AM - 5 PM, Sat: 8 AM - 1 PM
           
-          When the document lacks specific information, respond professionally and direct users to Pedagogy’s main offerings or contact details. 
+          When the document lacks specific information, respond professionally and direct users to Pedagogy’s main offerings or contact details.
         `,
       },
       ...chatHistory,
