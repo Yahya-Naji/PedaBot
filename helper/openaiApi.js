@@ -9,7 +9,15 @@ const DATA_PATH = "./static/Pedagogy_Portfolio.pdf";
 let embeddingsCache = null;
 let chatHistory = [];
 
-// Initialize embeddings (only run once)
+// Pedagogy info to introduce the assistant
+const pedagogyInfo = `
+    I am a customer service assistant for Pedagogy, an educational consultancy based in Tripoli.
+    Address: Riad Solh Street, City Complex, Floor 1, Tripoli.
+    Business Hours: Open until 5 PM.
+    Contact: 06 444 502.
+`;
+
+// Load and parse the PDF, generate embeddings only once
 const initializeEmbeddings = async () => {
   if (embeddingsCache) return embeddingsCache;
 
@@ -22,7 +30,7 @@ const initializeEmbeddings = async () => {
   return embeddingsCache;
 };
 
-// Split text into chunks
+// Split text into manageable chunks
 const splitText = (text, chunkSize = 300, overlap = 30) => {
   const chunks = [];
   for (let i = 0; i < text.length; i += chunkSize - overlap) {
@@ -31,7 +39,7 @@ const splitText = (text, chunkSize = 300, overlap = 30) => {
   return chunks;
 };
 
-// Generate embeddings
+// Generate embeddings for text chunks
 const generateEmbeddings = async (chunks) => {
   const embeddings = [];
   for (const chunk of chunks) {
@@ -55,7 +63,7 @@ const cosineSimilarity = (vecA, vecB) => {
   return dotProduct / (magnitudeA * magnitudeB);
 };
 
-// Find relevant chunk
+// Find relevant document chunk based on cosine similarity
 const findRelevantChunk = (embeddings, questionEmbedding) => {
   let bestMatch = null;
   let highestScore = -Infinity;
@@ -71,29 +79,43 @@ const findRelevantChunk = (embeddings, questionEmbedding) => {
   return bestMatch;
 };
 
-// Generate response with chat history
+// Generate assistant response with conversational history and Pedagogy introduction
 const chatCompletion = async (prompt) => {
   try {
+    // Ensure embeddings are initialized
     const { textChunks, embeddings } = await initializeEmbeddings();
 
+    // Generate embedding for the user question
     const questionEmbeddingResponse = await openai.embeddings.create({
       model: "text-embedding-ada-002",
       input: prompt,
     });
     const questionEmbedding = questionEmbeddingResponse.data[0].embedding;
 
-    const relevantChunk = findRelevantChunk(embeddings, questionEmbedding) || "No relevant context found.";
+    // Find the most relevant context in the document if any
+    const relevantChunk = findRelevantChunk(embeddings, questionEmbedding) || "";
 
-    // Combine message history for contextual responses
+    // Set introductory message if it's the first conversation
+    if (chatHistory.length === 0) {
+      chatHistory.push({ role: "assistant", content: pedagogyInfo });
+    }
+
+    // Combine message history
     const messages = [
-      {
-        role: "system",
-        content: "You are a friendly assistant. Answer questions based on available document content.",
-      },
+      { role: "system", content: "You are a friendly assistant for Pedagogy." },
       ...chatHistory,
-      { role: "user", content: `${relevantChunk}\n\nQuestion: ${prompt}` },
+      { role: "user", content: prompt },
     ];
 
+    // Append relevant document content if found
+    if (relevantChunk) {
+      messages.push({
+        role: "assistant",
+        content: `Here is what I found relevant to your question: ${relevantChunk}`,
+      });
+    }
+
+    // Generate response with OpenAI API
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages,
@@ -101,7 +123,7 @@ const chatCompletion = async (prompt) => {
 
     const content = response.choices[0].message.content;
 
-    // Update chat history
+    // Update chat history with the latest interaction
     chatHistory.push({ role: "user", content: prompt });
     chatHistory.push({ role: "assistant", content });
 
@@ -111,4 +133,9 @@ const chatCompletion = async (prompt) => {
   }
 };
 
-module.exports = { chatCompletion };
+// Optionally clear history for a fresh conversation
+const clearChatHistory = () => {
+  chatHistory = [];
+};
+
+module.exports = { chatCompletion, clearChatHistory };
