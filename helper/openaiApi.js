@@ -3,17 +3,17 @@ const pdfParse = require("pdf-parse");
 const { OpenAI } = require("openai");
 require("dotenv").config();
 
-// Initialize OpenAI directly with API key
+// Initialize OpenAI with API key
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
 // PDF file path
-const DATA_PATH ="./static/Pedagogy_Portfolio.pdf";
-
+const DATA_PATH = "./static/Pedagogy_Portfolio.pdf";
 
 // Load and parse the PDF, generate embeddings
 let embeddingsCache = null;
+let chatHistory = [];
 
 // Load PDF and generate embeddings only once
 const initializeEmbeddings = async () => {
@@ -77,7 +77,7 @@ const findRelevantChunk = (embeddings, questionEmbedding) => {
   return bestMatch;
 };
 
-// Generate response based on PDF context
+// Generate response based on PDF context with chat history
 const chatCompletion = async (prompt) => {
   try {
     // Ensure embeddings are loaded and ready
@@ -93,19 +93,30 @@ const chatCompletion = async (prompt) => {
     // Find the most relevant context chunk
     const relevantChunk = findRelevantChunk(embeddings, questionEmbedding) || "No relevant context found.";
 
+    // Build message history with chat history
+    const messages = [
+      {
+        role: "system",
+        content: `You are a friendly and professional customer service assistant for Pedagogy, the portal of Educational Development. Respond to users in a warm, concise, and helpful tone. Avoid repeating greetings like "Thank you for reaching out" or "Hello" if the user has already initiated a conversation. Focus on directly addressing the user's question or request with clear, conversational responses. Only reintroduce yourself and Pedagogy's mission if the user is new or has specific questions about the company.`,
+      },
+      ...chatHistory.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      })),
+      { role: "user", content: `${relevantChunk}\n\nQuestion: ${prompt}` },
+    ];
+
     // Generate the response
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
-      messages: [
-        {
-          role: "system",
-          content: `You are a friendly and professional customer service assistant for Pedagogy, the portal of Educational Development. Respond to users in a warm, concise, and helpful tone. Avoid repeating greetings like "Thank you for reaching out" or "Hello" if the user has already initiated a conversation. Focus on directly addressing the user's question or request with clear, conversational responses. Only reintroduce yourself and Pedagogy's mission if the user is new or has specific questions about the company.`,
-        },
-        { role: "user", content: `${relevantChunk}\n\nQuestion: ${prompt}` },
-      ],
+      messages,
     });
 
     const content = response.choices[0].message.content;
+
+    // Update chat history with user and assistant messages
+    chatHistory.push({ role: "user", content: prompt });
+    chatHistory.push({ role: "assistant", content });
 
     return {
       status: 1,
@@ -119,6 +130,12 @@ const chatCompletion = async (prompt) => {
   }
 };
 
+// Clear chat history function if needed
+const clearChatHistory = () => {
+  chatHistory = [];
+};
+
 module.exports = {
   chatCompletion,
+  clearChatHistory,
 };
