@@ -3,19 +3,13 @@ const pdfParse = require("pdf-parse");
 const { OpenAI } = require("openai");
 require("dotenv").config();
 
-// Initialize OpenAI with API key
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-// PDF file path
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const DATA_PATH = "./static/Pedagogy_Portfolio.pdf";
 
-// Load and parse the PDF, generate embeddings
 let embeddingsCache = null;
 let chatHistory = [];
 
-// Load PDF and generate embeddings only once
+// Initialize embeddings (only run once)
 const initializeEmbeddings = async () => {
   if (embeddingsCache) return embeddingsCache;
 
@@ -37,7 +31,7 @@ const splitText = (text, chunkSize = 300, overlap = 30) => {
   return chunks;
 };
 
-// Generate embeddings for each chunk
+// Generate embeddings
 const generateEmbeddings = async (chunks) => {
   const embeddings = [];
   for (const chunk of chunks) {
@@ -53,7 +47,7 @@ const generateEmbeddings = async (chunks) => {
   return embeddings;
 };
 
-// Calculate cosine similarity
+// Cosine similarity calculation
 const cosineSimilarity = (vecA, vecB) => {
   const dotProduct = vecA.reduce((acc, val, i) => acc + val * vecB[i], 0);
   const magnitudeA = Math.sqrt(vecA.reduce((acc, val) => acc + val ** 2, 0));
@@ -61,7 +55,7 @@ const cosineSimilarity = (vecA, vecB) => {
   return dotProduct / (magnitudeA * magnitudeB);
 };
 
-// Find the most relevant chunk for a question
+// Find relevant chunk
 const findRelevantChunk = (embeddings, questionEmbedding) => {
   let bestMatch = null;
   let highestScore = -Infinity;
@@ -77,36 +71,29 @@ const findRelevantChunk = (embeddings, questionEmbedding) => {
   return bestMatch;
 };
 
-// Generate response based on PDF context with chat history
+// Generate response with chat history
 const chatCompletion = async (prompt) => {
   try {
-    // Ensure embeddings are loaded and ready
     const { textChunks, embeddings } = await initializeEmbeddings();
 
-    // Generate question embedding
     const questionEmbeddingResponse = await openai.embeddings.create({
       model: "text-embedding-ada-002",
       input: prompt,
     });
     const questionEmbedding = questionEmbeddingResponse.data[0].embedding;
 
-    // Find the most relevant context chunk
     const relevantChunk = findRelevantChunk(embeddings, questionEmbedding) || "No relevant context found.";
 
-    // Build message history with chat history
+    // Combine message history for contextual responses
     const messages = [
       {
         role: "system",
-        content: `You are a friendly and professional customer service assistant for Pedagogy, the portal of Educational Development. Respond to users in a warm, concise, and helpful tone. Avoid repeating greetings like "Thank you for reaching out" or "Hello" if the user has already initiated a conversation. Focus on directly addressing the user's question or request with clear, conversational responses. Only reintroduce yourself and Pedagogy's mission if the user is new or has specific questions about the company.`,
+        content: "You are a friendly assistant. Answer questions based on available document content.",
       },
-      ...chatHistory.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      })),
+      ...chatHistory,
       { role: "user", content: `${relevantChunk}\n\nQuestion: ${prompt}` },
     ];
 
-    // Generate the response
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages,
@@ -114,28 +101,14 @@ const chatCompletion = async (prompt) => {
 
     const content = response.choices[0].message.content;
 
-    // Update chat history with user and assistant messages
+    // Update chat history
     chatHistory.push({ role: "user", content: prompt });
     chatHistory.push({ role: "assistant", content });
 
-    return {
-      status: 1,
-      response: content,
-    };
+    return { status: 1, response: content };
   } catch (error) {
-    return {
-      status: 0,
-      response: `Error: ${error.message}`,
-    };
+    return { status: 0, response: `Error: ${error.message}` };
   }
 };
 
-// Clear chat history function if needed
-const clearChatHistory = () => {
-  chatHistory = [];
-};
-
-module.exports = {
-  chatCompletion,
-  clearChatHistory,
-};
+module.exports = { chatCompletion };
