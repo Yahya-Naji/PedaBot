@@ -1,7 +1,6 @@
 const fs = require("fs");
 const pdfParse = require("pdf-parse");
 const { OpenAI } = require("openai");
-const { LangChain } = require("langchain");  // Ensure LangChain is installed
 require("dotenv").config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
