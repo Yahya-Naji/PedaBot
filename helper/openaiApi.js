@@ -1,23 +1,26 @@
 const fs = require("fs");
 const pdfParse = require("pdf-parse");
 const { OpenAI } = require("openai");
+const { LangChain } = require("langchain");  // Ensure LangChain is installed
 require("dotenv").config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const DATA_PATH = "./static/Pedagogy_Portfolio.pdf";
-
 let embeddingsCache = null;
 let chatHistory = [];
 
-// Pedagogy info to introduce the assistant
+// Pedagogy info for assistant introduction
 const pedagogyInfo = `
-    I am a customer service assistant for Pedagogy, an educational consultancy based in Tripoli.
-    Address: Riad Solh Street, City Complex, Floor 1, Tripoli.
-    Business Hours: Open until 5 PM.
-    Contact: 06 444 502.
+    I am a customer service assistant for Pedagogy, an educational consultancy based in Tripoli, Lebanon, with locations across the MENA region.
+    We specialize in educational services, including accreditation consulting, curriculum design, educational technology integration, and capacity-building workshops.
+    Contact Information:
+    - Address: Riad Solh Street, City Complex, Floor 1, Tripoli, Lebanon
+    - Phone: +961 6 444 502
+    - Email: info@pedagogycenter.com
+    - Business Hours: Mon-Fri: 8 AM - 5 PM, Sat: 8 AM - 1 PM
 `;
 
-// Load and parse the PDF, generate embeddings only once
+// Initialize PDF content with Langchain
 const initializeEmbeddings = async () => {
   if (embeddingsCache) return embeddingsCache;
 
@@ -30,92 +33,62 @@ const initializeEmbeddings = async () => {
   return embeddingsCache;
 };
 
-// Split text into manageable chunks
-const splitText = (text, chunkSize = 300, overlap = 30) => {
-  const chunks = [];
-  for (let i = 0; i < text.length; i += chunkSize - overlap) {
-    chunks.push(text.slice(i, i + chunkSize));
-  }
-  return chunks;
+// Langchain setup for better retrieval
+const langchain = new LangChain({
+  texts: [pdfData.text],  // Complete text parsed from PDF
+  embeddings: openai.embeddings.create({
+    model: "text-embedding-ada-002",
+  }),
+});
+
+// Enhanced search function using LangChain retrieval
+const findRelevantInfo = async (query) => {
+  const result = await langchain.query(query);
+  return result || "I couldn't find specific details in the document, but here’s more general information about Pedagogy's services.";
 };
 
-// Generate embeddings for text chunks
-const generateEmbeddings = async (chunks) => {
-  const embeddings = [];
-  for (const chunk of chunks) {
-    const embeddingResponse = await openai.embeddings.create({
-      model: "text-embedding-ada-002",
-      input: chunk,
-    });
-    embeddings.push({
-      content: chunk,
-      embedding: embeddingResponse.data[0].embedding,
-    });
-  }
-  return embeddings;
-};
-
-// Cosine similarity calculation
-const cosineSimilarity = (vecA, vecB) => {
-  const dotProduct = vecA.reduce((acc, val, i) => acc + val * vecB[i], 0);
-  const magnitudeA = Math.sqrt(vecA.reduce((acc, val) => acc + val ** 2, 0));
-  const magnitudeB = Math.sqrt(vecB.reduce((acc, val) => acc + val ** 2, 0));
-  return dotProduct / (magnitudeA * magnitudeB);
-};
-
-// Find relevant document chunk based on cosine similarity
-const findRelevantChunk = (embeddings, questionEmbedding) => {
-  let bestMatch = null;
-  let highestScore = -Infinity;
-
-  embeddings.forEach(({ content, embedding }) => {
-    const score = cosineSimilarity(embedding, questionEmbedding);
-    if (score > highestScore) {
-      highestScore = score;
-      bestMatch = content;
-    }
-  });
-
-  return bestMatch;
-};
-
-// Generate assistant response with conversational history and Pedagogy introduction
+// Conversational function with Langchain PDF search
 const chatCompletion = async (prompt) => {
   try {
-    // Ensure embeddings are initialized
-    const { textChunks, embeddings } = await initializeEmbeddings();
+    // Initialize embeddings if needed
+    const { textChunks } = await initializeEmbeddings();
 
-    // Generate embedding for the user question
-    const questionEmbeddingResponse = await openai.embeddings.create({
-      model: "text-embedding-ada-002",
-      input: prompt,
-    });
-    const questionEmbedding = questionEmbeddingResponse.data[0].embedding;
-
-    // Find the most relevant context in the document if any
-    const relevantChunk = findRelevantChunk(embeddings, questionEmbedding) || "";
-
-    // Set introductory message if it's the first conversation
+    // Set introductory message if first conversation
     if (chatHistory.length === 0) {
       chatHistory.push({ role: "assistant", content: pedagogyInfo });
     }
 
-    // Combine message history
+    // Search the document if relevant
+    const relevantInfo = await findRelevantInfo(prompt);
+
+    // Combine message history and build response with the improved prompt
     const messages = [
-      { role: "system", content: "You are a friendly assistant for Pedagogy." },
+      {
+        role: "system",
+        content: `
+          You are Pedagogy’s dedicated customer service assistant. Pedagogy is an educational consulting firm based in Lebanon with branches across the MENA region, offering expertise in accreditation consulting, curriculum design, educational technology, and school management systems. You are here to answer questions from users based on the information you have about Pedagogy’s services, mission, values, and offerings.
+          
+          If a user’s question can be answered with details from the Pedagogy portfolio document, retrieve that specific information and share it clearly. For example:
+          - For accreditation inquiries, explain Pedagogy’s APIS framework.
+          - For educational technology, discuss how Pedagogy integrates SMART technologies.
+          - For contact information, provide Pedagogy’s phone number, location, or email.
+
+          Contact Information:
+          - Address: Riad Solh Street, City Complex, Floor 1, Tripoli, Lebanon
+          - Phone: +961 6 444 502
+          - Email: info@pedagogycenter.com
+          - Business Hours: Mon-Fri: 8 AM - 5 PM, Sat: 8 AM - 1 PM
+
+          If you cannot find an answer in the document, respond warmly and professionally, directing them to Pedagogy’s main services or contact information. Always ensure responses are friendly, concise, and aligned with Pedagogy’s mission to enhance education quality and build competencies.
+
+          When asked general questions, start by introducing Pedagogy’s core mission and offerings before answering the specific query. Maintain a professional and helpful tone in all responses.
+        `,
+      },
       ...chatHistory,
       { role: "user", content: prompt },
+      { role: "assistant", content: relevantInfo },
     ];
 
-    // Append relevant document content if found
-    if (relevantChunk) {
-      messages.push({
-        role: "assistant",
-        content: `Here is what I found relevant to your question: ${relevantChunk}`,
-      });
-    }
-
-    // Generate response with OpenAI API
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages,
@@ -123,7 +96,7 @@ const chatCompletion = async (prompt) => {
 
     const content = response.choices[0].message.content;
 
-    // Update chat history with the latest interaction
+    // Update chat history
     chatHistory.push({ role: "user", content: prompt });
     chatHistory.push({ role: "assistant", content });
 
@@ -133,9 +106,4 @@ const chatCompletion = async (prompt) => {
   }
 };
 
-// Optionally clear history for a fresh conversation
-const clearChatHistory = () => {
-  chatHistory = [];
-};
-
-module.exports = { chatCompletion, clearChatHistory };
+module.exports = { chatCompletion };
